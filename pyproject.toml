@@ -1,0 +1,20 @@
+[project]
+name = "sensor-edge-ai"
+version = "0.1.0"
+description = "Turbofan RUL prediction, anomaly detection with uncertainty, and edge inference on NASA C-MAPSS"
+requires-python = ">=3.10"
+dependencies = ["numpy", "pandas", "scikit-learn"]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests", "scripts"]

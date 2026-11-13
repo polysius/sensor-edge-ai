@@ -35,8 +35,13 @@ def main() -> None:
     data_dir.mkdir(parents=True, exist_ok=True)
     outer_zip = data_dir / "outer.zip"
     if not outer_zip.exists():
+        # Download under a temporary name so an interrupted download never leaves a
+        # truncated outer.zip behind that would fail the checksum on every later run.
+        partial_zip = outer_zip.with_suffix(".zip.part")
         print(f"Downloading {OUTER_URL}")
-        urllib.request.urlretrieve(OUTER_URL, outer_zip)
+        urllib.request.urlretrieve(OUTER_URL, partial_zip)
+        verify(partial_zip, OUTER_SHA256)
+        partial_zip.replace(outer_zip)
     verify(outer_zip, OUTER_SHA256)
 
     with zipfile.ZipFile(outer_zip) as outer:

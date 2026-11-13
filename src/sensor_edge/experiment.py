@@ -25,6 +25,12 @@ class ExperimentConfig:
     seed: int = 0
     n_conditions: int | None = None  # None uses the subset's real number of conditions
 
+    def __post_init__(self):
+        if self.window_length < 2:
+            raise ValueError("window_length must be at least 2 to compute a slope")
+        if not 0 < self.val_fraction < 1:
+            raise ValueError("val_fraction must be between 0 and 1")
+
 
 @dataclass(frozen=True)
 class PreparedData:

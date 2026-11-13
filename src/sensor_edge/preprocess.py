@@ -40,8 +40,11 @@ class OperatingConditionNormaliser:
                 continue
             self.means_[condition] = rows.mean(axis=0)
             std = rows.std(axis=0)
-            # A constant sensor has zero spread. Dividing by 1 keeps it at exactly 0.
-            self.stds_[condition] = np.where(std < 1e-12, 1.0, std)
+            # A sensor with a single raw value has zero range. Its computed std can be
+            # rounding noise around 1e-11, which would blow the column up to -1, 0 or 1,
+            # so test the range and divide by 1 to keep the column at 0.
+            is_constant = np.ptp(rows, axis=0) == 0
+            self.stds_[condition] = np.where(is_constant, 1.0, std)
         return self
 
     def transform(self, frame: pd.DataFrame) -> pd.DataFrame:

@@ -43,6 +43,12 @@ def test_training_target_is_capped(data_dir):
     assert data.train_rul.min() == 0
 
 
+@pytest.mark.parametrize("bad_config", [{"window_length": 1}, {"val_fraction": 1.0}, {"val_fraction": 0}])
+def test_invalid_config_is_rejected(bad_config):
+    with pytest.raises(ValueError):
+        ExperimentConfig(**bad_config)
+
+
 def test_run_baselines_reports_finite_metrics_for_both_models(data_dir):
     rows = run_baselines(data_dir, "FD001", CONFIG)
 

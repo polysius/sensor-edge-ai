@@ -45,4 +45,4 @@ make baselines   # writes artifacts/baselines.md
 
 ## Limitations
 
-Results use one seed and one engine split, so small differences between models are not significant. The validation RMSE is measured over every cycle of the held-out engines, while the test RMSE uses only the last cycle of each test engine, so the two are not directly comparable.
+Results use one seed and one engine split, so small differences between models are not significant. The validation RMSE is measured over every cycle of the held-out engines, while the test RMSE uses only the last cycle of each test engine, so the two are not directly comparable. The training target is capped at 125 cycles but the official test RUL is not, which sets a floor on test RMSE (3.74 for FD001, 18.32 for FD002). RESULTS.md has the full floor table.

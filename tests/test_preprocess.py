@@ -57,6 +57,15 @@ def test_constant_sensor_is_dropped_from_the_data_not_a_fixed_list():
     assert len(sensors) == len(SENSOR_COLUMNS) - 1
 
 
+def test_constant_sensor_is_dropped_with_several_operating_conditions():
+    # A large fleet makes the computed std of a constant column rounding noise, not zero.
+    train = make_fleet(n_units=60, n_conditions=3, seed=0)
+
+    normalised = OperatingConditionNormaliser(n_conditions=3).fit(train).transform(train)
+
+    assert CONSTANT_SENSOR not in select_informative_sensors(normalised)
+
+
 def test_rul_counts_down_to_zero_and_is_capped():
     frame = make_fleet(n_units=3, seed=0)
 

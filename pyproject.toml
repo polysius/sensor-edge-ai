@@ -10,6 +10,7 @@ dev = ["pytest", "ruff"]
 deep = ["torch"]
 plots = ["matplotlib"]
 edge = ["onnx", "onnxruntime", "psutil"]
+stream = ["confluent-kafka", "prometheus-client", "onnxruntime", "joblib"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

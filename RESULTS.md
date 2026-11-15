@@ -151,6 +151,45 @@ Findings:
 - The ONNX fp32 median latencies matched across two complete runs of the benchmark that included retraining (0.095 and 0.094 ms for the LSTM, 0.034 and 0.034 ms for the CNN). An earlier version of this benchmark left convolutions out of dynamic quantisation on the mistaken belief that the CPU kernel could not run them. They run fine, and the table above includes them.
 - These timings are for 1 thread and batch size 1 on this chip, and will not carry over unchanged to a Raspberry Pi.
 
+## M5: streaming
+
+Produced by `scripts/stream_demo.sh` (`make stream-demo`) on the FD001 test engines, with the models from `scripts/prepare_stream_models.py` (`make stream-models`). The 13,096 readings of the 100 test engines are replayed into a Redpanda topic one cycle at a time across all engines, at 100 readings per second, which takes 131 seconds. A consumer scores every reading as it arrives with a 1D-CNN (static INT8, through ONNX Runtime) for RUL and an isolation forest (100 trees) for an anomaly score. A reading raises an alert when its anomaly score is above 0.508, the 95th percentile of scores on healthy windows of the validation engines. Alerts are also written to a second topic. The consumer exposes its metrics to Prometheus, and Grafana reads them. Redpanda, Prometheus and Grafana run in Docker. The producer and consumer run on the same ARM64 laptop in WSL2, and Redpanda has one node and one partition. Nothing from the test engines is used to fit the models or the threshold.
+
+![Grafana dashboard for the streaming demo](docs/grafana_dashboard.png)
+
+The screenshot is the third run, taken over a window that covers only that run (about 2.5 minutes). The panels show the scoring rate, the running count of alerts, end-to-end latency percentiles, the anomaly scores of the five highest engines against the alarm threshold, alerts per second, the ten engines predicted closest to failure, and the anomaly score and predicted RUL of a selected engine (engine 41 here).
+
+### End-to-end latency
+
+End-to-end latency is the time from the producer's clock reading just before it sends a message to the consumer's clock reading after it has finished scoring that reading. Both processes run on one machine, so they share a clock. Scoring is the time the consumer spent on one reading after receiving it. The replay was run three times, and all three are shown, because the tail differed a lot between runs.
+
+| Run | Readings scored | Throughput (per s) | End-to-end p50 (ms) | p95 (ms) | p99 (ms) | max (ms) | Scoring p50 (ms) | p95 (ms) | p99 (ms) |
+|---|---|---|---|---|---|---|---|---|---|
+| 1, quiet machine, spike planted in engine 7 | 13096 | 100.1 | 5.31 | 7.60 | 13.03 | 105.5 | 4.30 | 5.71 | 8.31 |
+| 2, dashboard loaded for the first time during the run | 13096 | 100.1 | 5.55 | 24.24 | 707.64 | 778.8 | 4.46 | 7.16 | 15.17 |
+| 3, dashboard open | 13096 | 100.0 | 5.54 | 8.03 | 17.03 | 68.9 | 4.47 | 6.06 | 8.71 |
+
+- Every run kept up with the producer: all 13,096 readings were scored at 100 per second with no backlog.
+- The median end-to-end latency was 5.3 to 5.6 ms in all three runs. About 4.3 to 4.5 ms of that is scoring, so the Kafka send and receive path adds about 1 ms.
+- The tail varied between runs. Run 2 had a p99 of 708 ms, against 13 and 17 ms in the other two runs. During run 2 I loaded the dashboard for the first time and polled Prometheus, and I did not isolate the cause. The Grafana latency panel recorded the same spike, so the dashboard is showing real delays.
+- Scoring one reading costs about 4 ms in a single process, which was measured separately on 1,000 readings without Kafka at 3.95 ms. That puts the ceiling near 250 readings per second for one consumer, and the replay at 100 per second uses a little under half of it. Throughput at higher rates was not measured through Kafka.
+
+### Alerts
+
+The replay raised 1,125 alerts over 13,096 readings (8.6 percent). The count was the same in the first and third runs. Using the official RUL file to work out how many cycles each reading was from failure, from the alerts topic of the first run:
+
+| True RUL at the reading | Readings | Alerts | Alert rate |
+|---|---|---|---|
+| 30 or less | 332 | 326 | 0.982 |
+| 31 to 125 | 4,812 | 475 | 0.099 |
+| over 125 | 7,952 | 324 | 0.041 |
+
+The alerts follow wear. Almost every reading within 30 cycles of failure raises one, and the rate on healthy readings (4.1 percent) is close to the 5 percent the threshold was set for. This matches the M3 result that this detector is strong near failure.
+
+The alerts do not follow injected spikes. In the first run a spike of 8 standard deviations was planted in sensor 11 of engine 7 for cycles 100 to 105, and no alert was raised for engine 7 in cycles 100 to 114, the windows that contain it. A separate check scored engine 7 with spikes of 0, 8, 20, 50 and 100 standard deviations. The forest's anomaly score stayed at or below 0.434 in every case, under the threshold of 0.508. The spike does reach the scored window: for the 100 standard deviation case the sensor's normalised value in the window changes by about 42 units and no other column changes. A shift of 1000 units in one sensor's features gives the same forest score as 20 units (0.421), so the score saturates. This agrees with M3, where the isolation forest had low recall on injected spikes, and it means the streaming alerts cannot be relied on for sudden single-sensor faults. A detector with better recall on those, such as the autoencoder from M3, would need to be added to the consumer.
+
+The first alerts in the topic are cycle 1 readings of the first engines. A cycle 1 window is one reading repeated, which looks unusual to the forest. How many of the healthy-region alerts come from such padded windows was not measured.
+
 ## Notes
 
 The test sets hold one score per engine (100, 259, 100 and 248 engines), so differences of one or two RMSE points between models are within the noise of a single seed. The comparison with a global normalisation uses the same seed and the same engine split.

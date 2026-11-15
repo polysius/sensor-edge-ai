@@ -11,7 +11,7 @@ The dataset is C-MAPSS, the default in the project spec. FD001 is the headline s
 | M1 | Data pipeline and classical baselines | Done |
 | M2 | LSTM and 1D-CNN RUL models | Done for FD001 and FD002 |
 | M3 | Anomaly detection and Gaussian process uncertainty | Done for FD001 (GP) and FD001 and FD002 (detectors) |
-| M4 | ONNX export, INT8 quantisation, edge benchmark | Not started |
+| M4 | ONNX export, INT8 quantisation, edge benchmark | Done on the ARM64 laptop (no Raspberry Pi) |
 | M5 | Redpanda streaming and Grafana | Not started |
 
 ## M1 pipeline
@@ -39,6 +39,21 @@ A health indicator (the first principal component of the normalised sensors) is 
 
 The orange line is the Gaussian process mean and the band is plus or minus 2 standard deviations. The dashed line is the failure level and the dotted line is the true failure cycle. The plot shows the lowest numbered test engine in each true RUL range (28, 50, 112 and 145 cycles left), not hand-picked examples. The engine closest to failure has a band that contains the true failure. The engine with 145 cycles left shows no degradation yet, so the forecast has nothing to extrapolate. Over all 100 FD001 test engines the forecast is poor, and the interval contains the true RUL for only 10 percent of them (32 percent for engines within 30 cycles of failure). RESULTS.md has the breakdown.
 
+## M4 edge inference
+
+The LSTM and the 1D-CNN are exported to ONNX and quantised to INT8 two ways with ONNX Runtime (dynamic, and static with calibration windows from the training engines). Each variant is benchmarked on the laptop's ARM64 CPU with one thread and one window per prediction.
+
+| Model | Variant | Size (KB) | p50 (ms) | Test RMSE |
+|---|---|---|---|---|
+| LSTM | PyTorch fp32 | 223.2 | 1.014 | 16.80 |
+| LSTM | ONNX fp32 | 223.8 | 0.095 | 16.80 |
+| LSTM | ONNX dynamic INT8 | 67.2 | 0.067 | 16.84 |
+| 1D-CNN | PyTorch fp32 | 562.4 | 0.187 | 16.68 |
+| 1D-CNN | ONNX fp32 | 560.8 | 0.034 | 16.68 |
+| 1D-CNN | ONNX static INT8 | 149.7 | 0.018 | 16.71 |
+
+ONNX Runtime is 5 to 11 times faster than PyTorch at batch size 1 (11 times for the LSTM, 5.5 times for the CNN) with identical predictions, and INT8 cuts size and latency further for a test RMSE change of 0.04 or less. Memory does not improve, because ONNX Runtime itself adds about 30 MB in every variant. The full table with p95 latency, memory and the other variants is in [RESULTS.md](RESULTS.md). No Raspberry Pi was available, and the benchmark ran in WSL2 on the laptop, not natively on Windows.
+
 ## Results
 
 FD001 test RMSE is 16.61 for linear regression, 14.53 for gradient boosting, 16.10 for the LSTM and 16.14 for the 1D-CNN. The networks do not beat gradient boosting on FD001. On FD002 the LSTM matches it on test RMSE and the 1D-CNN is behind it. The full tables, including the effect of per-condition normalisation on FD002, are in [RESULTS.md](RESULTS.md).
@@ -56,7 +71,7 @@ make baselines   # writes artifacts/baselines.md
 make deep        # needs torch: pip install -e .[deep]; writes artifacts/deep_models.md
 ```
 
-`make anomaly` and `make uncertainty` need torch for the autoencoder and matplotlib for the plot (`pip install -e .[deep,plots]`). `make deep` trains on CPU and takes several minutes per subset. The torch tests skip themselves when torch is not installed.
+`make edge` needs torch and the ONNX tools (`pip install -e .[deep,edge]`) and writes `artifacts/edge.md`. `make anomaly` and `make uncertainty` need torch for the autoencoder and matplotlib for the plot (`pip install -e .[deep,plots]`). `make deep` trains on CPU and takes several minutes per subset. The torch tests skip themselves when torch is not installed.
 
 `make data` downloads from the PHM data mirror, because the NASA portal link rejects scripts. It checks the SHA-256 of both archives.
 

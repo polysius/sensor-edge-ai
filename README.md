@@ -9,7 +9,7 @@ The dataset is C-MAPSS, the default in the project spec. FD001 is the headline s
 | Milestone | Scope | State |
 |---|---|---|
 | M1 | Data pipeline and classical baselines | Done |
-| M2 | LSTM and 1D-CNN RUL models | Not started |
+| M2 | LSTM and 1D-CNN RUL models | Done for FD001 and FD002 |
 | M3 | Anomaly detection and Gaussian process uncertainty | Not started |
 | M4 | ONNX export, INT8 quantisation, edge benchmark | Not started |
 | M5 | Redpanda streaming and Grafana | Not started |
@@ -25,9 +25,13 @@ The dataset is C-MAPSS, the default in the project spec. FD001 is the headline s
 
 Test scoring uses the last window of each official test engine against the official RUL file. The metrics are RMSE and the PHM08 NASA score, which penalises late predictions more than early ones.
 
+## M2 models
+
+An LSTM (two layers, 64 hidden units) and a 1D-CNN (three convolutions over the time axis) read the same normalised windows as the baselines. Both are trained with Adam and MSE on the RUL scaled by the cap, with early stopping on validation RMSE, and each is run with three seeds.
+
 ## Results
 
-FD001 test RMSE is 16.61 for linear regression and 14.53 for gradient boosting. The full table, including the effect of per-condition normalisation on FD002, is in [RESULTS.md](RESULTS.md).
+FD001 test RMSE is 16.61 for linear regression, 14.53 for gradient boosting, 16.10 for the LSTM and 16.14 for the 1D-CNN. The networks do not beat gradient boosting on FD001 and are about level with it on FD002. The full tables, including the effect of per-condition normalisation on FD002, are in [RESULTS.md](RESULTS.md).
 
 ## Run it
 
@@ -39,7 +43,10 @@ make data        # download C-MAPSS and verify the checksums
 make test
 make lint
 make baselines   # writes artifacts/baselines.md
+make deep        # needs torch: pip install -e .[deep]; writes artifacts/deep_models.md
 ```
+
+`make deep` trains on CPU and takes several minutes per subset. The torch tests skip themselves when torch is not installed.
 
 `make data` downloads from the PHM data mirror, because the NASA portal link rejects scripts. It checks the SHA-256 of both archives.
 

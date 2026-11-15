@@ -11,7 +11,7 @@ from sensor_edge.experiment import ExperimentConfig
 
 TABLE_HEADER = (
     "| Model | Variant | Size (KB) | p50 (ms) | p95 (ms) | Memory added (MB) | "
-    "Test RMSE | RMSE change | NASA score | Max diff vs ONNX fp32 (cycles) |\n"
+    "Test RMSE | RMSE change | NASA score | Max diff vs PyTorch fp32 (cycles) |\n"
     "|---|---|---|---|---|---|---|---|---|---|\n"
 )
 
@@ -41,7 +41,8 @@ def main() -> None:
     report = (
         f"Device: {platform.machine()}, onnxruntime {onnxruntime.__version__}, "
         f"{edge.threads} thread, batch size 1, {edge.runs} timed predictions after "
-        f"{edge.warmup} warm-up runs, {args.subset} test windows.\n\n"
+        f"{edge.warmup} warm-up runs, {args.subset} test windows. Accuracy is also scored "
+        f"one window per call. PyTorch latency is the median of 3 repeated timings.\n\n"
         + TABLE_HEADER
         + "\n".join(format_row(row) for row in rows)
         + "\n"

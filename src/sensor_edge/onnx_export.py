@@ -5,9 +5,9 @@ from pathlib import Path
 import torch
 from torch import nn
 
+from sensor_edge.onnx_io import INPUT_NAME, OUTPUT_NAME
+
 OPSET_VERSION = 17
-INPUT_NAME = "window"
-OUTPUT_NAME = "rul_scaled"  # RUL divided by the training cap, as the networks output it
 
 
 def export_onnx(model: nn.Module, window_length: int, n_sensors: int, path: Path) -> None:

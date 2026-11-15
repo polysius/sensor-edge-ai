@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from sensor_edge.onnx_export import INPUT_NAME
+from sensor_edge.onnx_io import INPUT_NAME
 
 
 def latency_percentiles(run_once: Callable[[int], object], n_warmup: int, n_runs: int) -> dict:

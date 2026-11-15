@@ -11,7 +11,7 @@ from onnxruntime.quantization import (
     quantize_static,
 )
 
-from sensor_edge.onnx_export import INPUT_NAME
+from sensor_edge.onnx_io import INPUT_NAME
 
 
 class WindowCalibrationReader(CalibrationDataReader):
@@ -32,14 +32,15 @@ class WindowCalibrationReader(CalibrationDataReader):
 def quantize_dynamic_int8(fp32_path: Path, output_path: Path) -> None:
     """Quantise weights to INT8 now and activations on the fly at run time.
 
-    Needs no example data. Only MatMul and LSTM nodes are quantised, because the
-    CPU kernel for dynamically quantised convolutions does not accept INT8 weights.
+    Needs no example data. Convolutions, matrix multiplications and LSTMs are all
+    quantised. Activation scales are computed from each input tensor at run time,
+    so a prediction can depend slightly on which other windows share its batch.
     """
     quantize_dynamic(
         str(fp32_path),
         str(output_path),
         weight_type=QuantType.QInt8,
-        op_types_to_quantize=["MatMul", "LSTM"],
+        op_types_to_quantize=["Conv", "MatMul", "LSTM"],
     )
 
 

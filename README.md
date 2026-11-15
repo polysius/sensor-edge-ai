@@ -45,14 +45,14 @@ The LSTM and the 1D-CNN are exported to ONNX and quantised to INT8 two ways with
 
 | Model | Variant | Size (KB) | p50 (ms) | Test RMSE |
 |---|---|---|---|---|
-| LSTM | PyTorch fp32 | 223.2 | 1.014 | 16.80 |
-| LSTM | ONNX fp32 | 223.8 | 0.095 | 16.80 |
-| LSTM | ONNX dynamic INT8 | 67.2 | 0.067 | 16.84 |
-| 1D-CNN | PyTorch fp32 | 562.4 | 0.187 | 16.68 |
-| 1D-CNN | ONNX fp32 | 560.8 | 0.034 | 16.68 |
-| 1D-CNN | ONNX static INT8 | 149.7 | 0.018 | 16.71 |
+| LSTM | PyTorch fp32 | 223.2 | 0.995 | 16.80 |
+| LSTM | ONNX fp32 | 223.8 | 0.094 | 16.80 |
+| LSTM | ONNX dynamic INT8 | 67.2 | 0.066 | 16.78 |
+| 1D-CNN | PyTorch fp32 | 562.4 | 0.182 | 16.67 |
+| 1D-CNN | ONNX fp32 | 560.8 | 0.034 | 16.67 |
+| 1D-CNN | ONNX static INT8 | 149.7 | 0.018 | 16.75 |
 
-ONNX Runtime is 5 to 11 times faster than PyTorch at batch size 1 (11 times for the LSTM, 5.5 times for the CNN) with identical predictions, and INT8 cuts size and latency further for a test RMSE change of 0.04 or less. Memory does not improve, because ONNX Runtime itself adds about 30 MB in every variant. The full table with p95 latency, memory and the other variants is in [RESULTS.md](RESULTS.md). No Raspberry Pi was available, and the benchmark ran in WSL2 on the laptop, not natively on Windows.
+ONNX Runtime is 5 to 11 times faster than PyTorch at batch size 1 (10.6 times for the LSTM, 5.4 times for the CNN) with the same predictions. INT8 cuts size by 70 percent for the LSTM (dynamic) and 73 percent for the CNN (static) and speeds up inference, for a test RMSE change of at most 0.09. Static INT8 does nothing for the LSTM, and dynamic INT8 gives the CNN almost no speed-up. Memory does not improve: every ONNX variant adds about 11.5 MB, because the cost is the runtime and not the weights. The full table with p95 latency, memory and the other variants is in [RESULTS.md](RESULTS.md). The benchmark ran in WSL2 on the laptop, not natively on Windows, and a Raspberry Pi was not benchmarked.
 
 ## Results
 

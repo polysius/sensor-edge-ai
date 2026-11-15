@@ -39,7 +39,16 @@ class EdgeConfig:
     seed: int = 0
 
 
+PYTORCH_TIMING_REPEATS = 3
+
+
 def _pytorch_latency(model: nn.Module, windows: np.ndarray, edge: EdgeConfig) -> dict:
+    """Median of a few repeated timings, because PyTorch timings vary more between runs.
+
+    PyTorch is timed in this process with the same thread count as ONNX Runtime. The
+    thread setting is restored afterwards so it does not change later training.
+    """
+    previous_threads = torch.get_num_threads()
     torch.set_num_threads(edge.threads)
     inputs = torch.as_tensor(windows, dtype=torch.float32)
 
@@ -48,7 +57,14 @@ def _pytorch_latency(model: nn.Module, windows: np.ndarray, edge: EdgeConfig) ->
         with torch.no_grad():
             model(inputs[start : start + 1])
 
-    return latency_percentiles(run_once, edge.warmup, edge.runs)
+    try:
+        repeats = [
+            latency_percentiles(run_once, edge.warmup, edge.runs)
+            for _ in range(PYTORCH_TIMING_REPEATS)
+        ]
+    finally:
+        torch.set_num_threads(previous_threads)
+    return {key: float(np.median([repeat[key] for repeat in repeats])) for key in repeats[0]}
 
 
 def _pytorch_size_bytes(model: nn.Module) -> int:
@@ -137,14 +153,13 @@ def run_edge_benchmark(
             "ONNX dynamic INT8": dynamic_path,
             "ONNX static INT8": static_path,
         }
-        fp32_onnx_predictions = None
         for variant, path in variants.items():
             session = create_session(path, edge.threads)
+            # One window per call, the same way latency is timed. Dynamic INT8 sets its
+            # activation scale from each input tensor, so batching would change its output.
             predictions = scaled_to_rul(
-                predict_scaled(session, data.test_windows), experiment.rul_cap
+                predict_scaled(session, data.test_windows, batch_size=1), experiment.rul_cap
             )
-            if fp32_onnx_predictions is None:
-                fp32_onnx_predictions = predictions
             variant_score = score(predictions)
             rows.append({
                 "model": name, "variant": variant,
@@ -152,6 +167,6 @@ def run_edge_benchmark(
                 **_worker_benchmark(path, windows_path, edge),
                 **variant_score,
                 "rmse_change": variant_score["test_rmse"] - torch_score["test_rmse"],
-                "max_diff_cycles": float(np.abs(predictions - fp32_onnx_predictions).max()),
+                "max_diff_cycles": float(np.abs(predictions - torch_predictions).max()),
             })
     return rows

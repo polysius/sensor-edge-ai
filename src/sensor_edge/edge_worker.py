@@ -10,10 +10,11 @@ import json
 from pathlib import Path
 
 import numpy as np
+import onnxruntime  # noqa: F401  imported here so the memory baseline already includes the library
 import psutil
 
 from sensor_edge.edge_bench import create_session, latency_percentiles
-from sensor_edge.onnx_export import INPUT_NAME
+from sensor_edge.onnx_io import INPUT_NAME
 
 BYTES_PER_MB = 1024 * 1024
 

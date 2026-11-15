@@ -87,6 +87,39 @@ def test_static_quantisation_runs_with_calibration_windows(exported, tmp_path):
     assert np.abs(outputs - reference).max() < 0.1
 
 
+def op_types(path):
+    import onnx
+
+    return {node.op_type for node in onnx.load(str(path)).graph.node}
+
+
+def test_dynamic_quantisation_covers_convolutions_and_lstm(exported, tmp_path):
+    path, _, _ = exported
+    quantised_path = tmp_path / "dynamic.onnx"
+
+    quantize_dynamic_int8(path, quantised_path)
+
+    quantised_ops = op_types(quantised_path)
+    if "LSTM" in op_types(path):
+        assert "DynamicQuantizeLSTM" in quantised_ops and "LSTM" not in quantised_ops
+    else:
+        assert "ConvInteger" in quantised_ops and "Conv" not in quantised_ops
+    assert "MatMulInteger" in quantised_ops
+
+
+def test_worker_does_not_import_torch():
+    code = (
+        "import sys; import sensor_edge.edge_worker; "
+        "sys.exit(1 if 'torch' in sys.modules else 0)"
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-c", code], check=False, env={"PYTHONPATH": str(SRC), "PATH": ""}
+    )
+
+    assert completed.returncode == 0
+
+
 def test_calibration_reader_yields_every_window_once_then_stops():
     reader = WindowCalibrationReader(make_windows(70), batch_size=32)
 

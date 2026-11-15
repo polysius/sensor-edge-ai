@@ -1,6 +1,6 @@
 # sensor-edge-ai
 
-Remaining useful life (RUL) prediction for turbofan engines on NASA C-MAPSS, with the aim of adding anomaly detection, uncertainty estimates, INT8 edge inference and a streaming demo.
+Remaining useful life (RUL) prediction for turbofan engines on NASA C-MAPSS, with anomaly detection, Gaussian process uncertainty, INT8 edge inference and a live streaming demo through Redpanda, Prometheus and Grafana.
 
 The dataset is C-MAPSS, the default in the project spec. FD001 is the headline subset. FD002 to FD004 are also run.
 
@@ -12,7 +12,7 @@ The dataset is C-MAPSS, the default in the project spec. FD001 is the headline s
 | M2 | LSTM and 1D-CNN RUL models | Done for FD001 and FD002 |
 | M3 | Anomaly detection and Gaussian process uncertainty | Done for FD001 (GP) and FD001 and FD002 (detectors) |
 | M4 | ONNX export, INT8 quantisation, edge benchmark | Done on the ARM64 laptop (no Raspberry Pi) |
-| M5 | Redpanda streaming and Grafana | Not started |
+| M5 | Redpanda streaming and Grafana | Done |
 
 ## M1 pipeline
 
@@ -53,6 +53,25 @@ The LSTM and the 1D-CNN are exported to ONNX and quantised to INT8 two ways with
 | 1D-CNN | ONNX static INT8 | 149.7 | 0.018 | 16.75 |
 
 ONNX Runtime is 5 to 11 times faster than PyTorch at batch size 1 (10.6 times for the LSTM, 5.4 times for the CNN) with the same predictions. INT8 cuts size by 70 percent for the LSTM (dynamic) and 73 percent for the CNN (static) and speeds up inference, for a test RMSE change of at most 0.09. Static INT8 does nothing for the LSTM, and dynamic INT8 gives the CNN almost no speed-up. Memory does not improve: every ONNX variant adds about 11.5 MB, because the cost is the runtime and not the weights. The full table with p95 latency, memory and the other variants is in [RESULTS.md](RESULTS.md). The benchmark ran in WSL2 on the laptop, not natively on Windows, and a Raspberry Pi was not benchmarked.
+
+## M5 streaming
+
+The FD001 test engines are replayed into a Redpanda topic at 100 readings per second. A consumer scores each reading as it arrives, with the INT8 1D-CNN for RUL and an isolation forest for an anomaly score, and exposes the scores to Prometheus. Grafana shows the scoring rate, alerts, end-to-end latency, anomaly scores and predicted RUL per engine. Alerts are also written to a second topic.
+
+![Grafana dashboard for the streaming demo](docs/grafana_dashboard.png)
+
+End-to-end latency from the producer sending a reading to the consumer finishing its score had a median of 5.3 to 5.6 ms over three runs of the full replay, with a p99 of 13, 708 and 17 ms. Every run scored all readings at the producer's pace on average, but the run with the 708 ms tail had a temporary queue. The alerts follow engine wear (98 percent of readings within 30 cycles of failure raise one) and do not catch a spike planted in a single sensor, which matches the weak spike recall of this detector in M3. Most false alarms come from the first 29 cycles of each engine, when the window is padded, and they are not suppressed. [RESULTS.md](RESULTS.md) has the latency table for all three runs and the alert breakdown.
+
+To run it, start the stack, train the models, and run the demo. Grafana is at http://localhost:3300 and opens on the dashboard without a login. The host ports (3300, 9190, 19092) are chosen to avoid common local ports.
+
+```
+make stream-up       # Redpanda, Prometheus and Grafana, plus the two topics
+make stream-models   # trains the CNN, the forest and the alarm threshold (needs torch and the ONNX tools: pip install -e .[deep,edge])
+make stream-demo     # replays the engines and scores them live
+make stream-down
+```
+
+The consumer and producer need `pip install -e .[stream]`; training the models also needs `.[deep,edge]`. The consumer exposes metrics on port 8000, which Prometheus reaches as `host.docker.internal`. The demo runs one consumer on one partition, and the replay is recorded data and not live sensors.
 
 ## Results
 

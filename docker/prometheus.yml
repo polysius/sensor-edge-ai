@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 2s
+
+scrape_configs:
+  # The consumer runs on the host and exposes its metrics on port 8000.
+  - job_name: sensor-consumer
+    static_configs:
+      - targets: ["host.docker.internal:8000"]

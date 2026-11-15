@@ -60,6 +60,7 @@ class NormalisedFrames:
     val: pd.DataFrame
     test: pd.DataFrame
     sensors: list[str]
+    normaliser: OperatingConditionNormaliser  # fitted on the training engines only
 
 
 def normalise_subset(subset: Subset, config: ExperimentConfig) -> NormalisedFrames:
@@ -79,6 +80,7 @@ def normalise_subset(subset: Subset, config: ExperimentConfig) -> NormalisedFram
         val=add_capped_rul(val, config.rul_cap),
         test=test,
         sensors=sensors,
+        normaliser=normaliser,
     )
 
 

@@ -8,6 +8,7 @@ dependencies = ["numpy", "pandas", "scikit-learn"]
 [project.optional-dependencies]
 dev = ["pytest", "ruff"]
 deep = ["torch"]
+plots = ["matplotlib"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

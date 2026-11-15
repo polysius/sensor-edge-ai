@@ -31,13 +31,13 @@ An LSTM (two layers, 64 hidden units) and a 1D-CNN (three convolutions over the 
 
 ## M3 anomaly detection and uncertainty
 
-Two detectors learn what healthy windows look like and flag windows that differ: an isolation forest on the window features, and an autoencoder that scores a window by how badly it rebuilds it. They are checked on faults injected into healthy test windows (spike, drift, stuck sensor) and on windows within 30 cycles of failure. At a threshold that allows about 5 percent false alarms they miss most injected faults. They do well on windows close to failure, where the isolation forest reaches an AUC of 0.997 on FD001. The full precision and recall table is in [RESULTS.md](RESULTS.md).
+Two detectors learn what healthy windows look like and flag windows that differ: an isolation forest on the window features, and an autoencoder that scores a window by how badly it rebuilds it. They are checked on faults injected into healthy test windows (spike, drift, stuck sensor) and on windows within 30 cycles of failure. At a threshold that allows about 5 percent false alarms they miss most injected faults. On windows close to failure the isolation forest does well (AUC 0.997 on FD001) and the autoencoder does not (AUC 0.810, recall 0.23). The full precision and recall table is in [RESULTS.md](RESULTS.md).
 
 A health indicator (the first principal component of the normalised sensors) is extrapolated with a Gaussian process to estimate when it reaches the failure level, and the band gives an interval on the remaining life.
 
-![Gaussian process forecast of the health indicator for four test engines near failure](docs/uncertainty.png)
+![Gaussian process forecast of the health indicator for four FD001 test engines, one per true RUL range](docs/uncertainty.png)
 
-The orange line is the Gaussian process mean and the band is plus or minus 2 standard deviations. The dashed line is the failure level and the dotted line is the true failure cycle. These four engines are close to failure, so the plot shows the forecast at its best. Over all 100 FD001 test engines the forecast is poor, because engines early in life show no degradation yet, and the interval covers the true RUL for only 10 percent of engines (32 percent for engines within 30 cycles of failure). RESULTS.md has the breakdown.
+The orange line is the Gaussian process mean and the band is plus or minus 2 standard deviations. The dashed line is the failure level and the dotted line is the true failure cycle. The plot shows the lowest numbered test engine in each true RUL range (28, 50, 112 and 145 cycles left), not hand-picked examples. The engine closest to failure has a band that contains the true failure. The engine with 145 cycles left shows no degradation yet, so the forecast has nothing to extrapolate. Over all 100 FD001 test engines the forecast is poor, and the interval contains the true RUL for only 10 percent of them (32 percent for engines within 30 cycles of failure). RESULTS.md has the breakdown.
 
 ## Results
 

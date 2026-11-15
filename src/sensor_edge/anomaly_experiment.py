@@ -91,6 +91,16 @@ def _score_alarms(
     }
 
 
+def _changed_windows(original: np.ndarray, faulted: np.ndarray) -> np.ndarray:
+    """Mask of windows the fault actually changed.
+
+    A stuck sensor changes nothing if the sensor was already constant in the
+    window, for example a nearly constant sensor or a window at cycle 1 that is
+    all padding. Those are not faults, so they are left out of the check.
+    """
+    return (original != faulted).any(axis=(1, 2))
+
+
 def run_anomaly_detection(
     subset: Subset,
     config: ExperimentConfig,
@@ -100,7 +110,8 @@ def run_anomaly_detection(
     """Fit each detector on healthy training windows and score it on the test engines.
 
     Two checks are reported. Injected faults put a known fault into a copy of every
-    healthy test window, one fault type at a time, so each row is balanced one to one.
+    healthy test window, one fault type at a time, and keep the windows the fault
+    changed, so each row is balanced one to one.
     End of life asks whether windows within 30 cycles of failure raise alarms, and
     that check has more healthy windows than degraded ones.
     """
@@ -114,7 +125,10 @@ def run_anomaly_detection(
         for fault_type in FAULT_TYPES:
             fault_rng = np.random.default_rng(seed)
             faulted = inject_fault(data.test_healthy, fault_type, fault_rng)
-            result = _score_alarms(healthy_scores, detector.score(faulted), threshold)
+            changed = _changed_windows(data.test_healthy, faulted)
+            result = _score_alarms(
+                healthy_scores[changed], detector.score(faulted[changed]), threshold
+            )
             rows.append({"subset": subset.name, "detector": name, "check": fault_type, **result})
 
         end_of_life = _score_alarms(healthy_scores, detector.score(data.test_degraded), threshold)

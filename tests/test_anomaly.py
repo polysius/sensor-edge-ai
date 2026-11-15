@@ -4,6 +4,7 @@ import pytest
 from sensor_edge.anomaly_experiment import (
     END_OF_LIFE_RUL,
     _add_test_rul,
+    _changed_windows,
     _score_alarms,
     prepare_anomaly_data,
     run_anomaly_detection,
@@ -30,6 +31,27 @@ def test_isolation_forest_scores_faulted_windows_higher():
     faulted = inject_fault(healthy[300:], "spike", np.random.default_rng(1))
 
     assert detector.score(faulted).mean() > detector.score(healthy[300:]).mean()
+
+
+def test_a_stuck_fault_on_an_already_constant_sensor_is_not_counted():
+    windows = np.random.default_rng(0).normal(size=(6, 10, 3))
+    windows[:, :, 1] = 2.0  # sensor 1 never moves, so freezing it changes nothing
+    faulted = windows.copy()
+    faulted[0, :, 0] = windows[0, 0, 0]  # a real freeze of sensor 0 in window 0 only
+
+    changed = _changed_windows(windows, faulted)
+
+    assert changed.tolist() == [True, False, False, False, False, False]
+
+
+def test_stuck_check_only_scores_windows_the_fault_changed(subset):
+    detectors = {"Largest reading": LargestReadingDetector}
+
+    stuck = run_anomaly_detection(subset, CONFIG, detectors)[2]
+    data = prepare_anomaly_data(subset, CONFIG)
+
+    assert stuck["check"] == "stuck"
+    assert stuck["n_healthy"] == stuck["n_anomalous"] <= len(data.test_healthy)
 
 
 def test_test_rul_matches_the_official_value_at_the_last_cycle_and_counts_down(subset):

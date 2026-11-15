@@ -10,12 +10,21 @@ from sensor_edge.data import load_subset
 from sensor_edge.experiment import ExperimentConfig
 from sensor_edge.forecast import (
     N_SIGMA,
+    RUL_BUCKETS,
     forecast_test_engines,
     summarise_by_true_rul,
     summarise_forecasts,
 )
 
-PLOT_UNITS = [24, 34, 76, 82]  # fixed before any results were seen
+
+def pick_plot_units(table) -> list[int]:
+    """The lowest unit number in each true-RUL range, so the plot is not hand-picked."""
+    units = []
+    for _, low, high in RUL_BUCKETS:
+        in_bucket = table[(table["true_rul"] >= low) & (table["true_rul"] <= high)]
+        if len(in_bucket):
+            units.append(int(in_bucket["unit"].min()))
+    return units
 
 
 def plot_forecasts(table, indicator, forecasts, frames_test, path: Path) -> None:
@@ -25,7 +34,7 @@ def plot_forecasts(table, indicator, forecasts, frames_test, path: Path) -> None
     import matplotlib.pyplot as plt
 
     figure, axes = plt.subplots(2, 2, figsize=(11, 7), sharey=True)
-    for axis, unit in zip(axes.ravel(), PLOT_UNITS):
+    for axis, unit in zip(axes.ravel(), pick_plot_units(table)):
         cycles, health = indicator.trajectory(frames_test[frames_test["unit"] == unit])
         forecast = forecasts[unit]
         true_failure = cycles[-1] + table.set_index("unit").loc[unit, "true_rul"]
@@ -41,9 +50,10 @@ def plot_forecasts(table, indicator, forecasts, frames_test, path: Path) -> None
         )
         axis.axhline(indicator.failure_level_, color="tab:red", linestyle="--", label="failure level")
         axis.axvline(true_failure, color="black", linestyle=":", label="true failure")
-        axis.set_title(f"Test engine {unit}")
+        true_rul = table.set_index("unit").loc[unit, "true_rul"]
+        axis.set_title(f"Test engine {unit} (true RUL {true_rul})")
         axis.set_xlabel("cycle")
-        axis.set_xlim(0, cycles[-1] + 130)
+        axis.set_xlim(0, forecast.future_cycles[-1])
     axes[0, 0].set_ylabel("health indicator")
     axes[1, 0].set_ylabel("health indicator")
     axes[0, 0].legend(loc="upper left", fontsize=8)

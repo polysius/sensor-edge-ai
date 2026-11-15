@@ -9,6 +9,7 @@ dependencies = ["numpy", "pandas", "scikit-learn"]
 dev = ["pytest", "ruff"]
 deep = ["torch"]
 plots = ["matplotlib"]
+edge = ["onnx", "onnxruntime", "psutil"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

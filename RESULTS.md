@@ -122,6 +122,35 @@ This is much worse than the M1 and M2 models (FD001 test RMSE 14.5 to 16.6). The
 
 The plot in the README shows one test engine from each true RUL range: the lowest unit number in each range (engines 18, 17, 1 and 25, with true RUL 28, 50, 112 and 145). The rule is in `pick_plot_units` in `scripts/run_uncertainty.py`, and it does not look at forecast quality. An earlier version of the plot used four hand-picked engines that were all close to failure. It was replaced because that choice made the forecast look better than it is.
 
+## M4: edge optimisation
+
+Produced by `scripts/run_edge.py` (`make edge`) on FD001. Both networks from M2 are exported, because the LSTM and the 1D-CNN are tied on test RMSE once seed spread is taken into account. Each is trained once with seed 0 (so the RMSE here differs from the three-seed mean in M2), exported to ONNX, and quantised to INT8 in two ways with ONNX Runtime. Dynamic quantisation converts the weights now and quantises activations at run time, with no example data. Static quantisation also fixes the activation ranges ahead of time, using 256 evenly spaced training windows (never test windows).
+
+Device: the laptop's own ARM64 CPU (Snapdragon X Plus, 8 cores), measured from WSL2 (aarch64 Ubuntu) with onnxruntime 1.32.0. WSL2 is a lightweight virtual machine on the same chip, so absolute times may differ a little from native Windows. Each model is limited to one thread and predicts one window at a time (batch size 1). Accuracy is scored the same way, one window per call, because dynamic quantisation sets its activation scale from each input tensor and its output can depend on the batch. Latency is the time for 1000 predictions after 100 warm-up runs. Each ONNX variant runs in its own fresh process, which has no PyTorch loaded, so its memory is measured on its own. PyTorch is timed in the training process and its latency is the median of 3 repeated timings. A Raspberry Pi was not benchmarked.
+
+| Model | Variant | Size (KB) | p50 (ms) | p95 (ms) | Memory added (MB) | Test RMSE | RMSE change | NASA score | Max diff vs PyTorch fp32 (cycles) |
+|---|---|---|---|---|---|---|---|---|---|
+| LSTM | PyTorch fp32 | 223.2 | 0.995 | 1.291 | n/a | 16.80 | +0.00 | 672 | n/a |
+| LSTM | ONNX fp32 | 223.8 | 0.094 | 0.108 | 11.4 | 16.80 | -0.00 | 672 | 0.00 |
+| LSTM | ONNX dynamic INT8 | 67.2 | 0.066 | 0.078 | 11.7 | 16.78 | -0.02 | 662 | 2.50 |
+| LSTM | ONNX static INT8 | 222.5 | 0.095 | 0.108 | 11.7 | 16.83 | +0.03 | 673 | 0.51 |
+| 1D-CNN | PyTorch fp32 | 562.4 | 0.182 | 0.225 | n/a | 16.67 | +0.00 | 489 | n/a |
+| 1D-CNN | ONNX fp32 | 560.8 | 0.034 | 0.046 | 11.4 | 16.67 | +0.00 | 489 | 0.00 |
+| 1D-CNN | ONNX dynamic INT8 | 149.4 | 0.031 | 0.033 | 12.0 | 16.76 | +0.09 | 506 | 1.17 |
+| 1D-CNN | ONNX static INT8 | 149.7 | 0.018 | 0.018 | 11.6 | 16.75 | +0.08 | 500 | 1.64 |
+
+"RMSE change" is the test RMSE minus that of the PyTorch fp32 model. "Max diff" is the largest difference in any single test prediction from the PyTorch fp32 model, in cycles. "Memory added" is the growth in resident memory from creating the session and running the benchmark, in a process that had already imported ONNX Runtime and numpy, so it leaves out the cost of loading the library itself. PyTorch memory was not measured because it includes the whole PyTorch library.
+
+Findings:
+
+- Moving from PyTorch to ONNX Runtime is the biggest speed gain at batch size 1: median latency falls from 0.995 to 0.094 ms for the LSTM (10.6 times) and from 0.182 to 0.034 ms for the CNN (5.4 times). The ONNX fp32 predictions match PyTorch to within 0.005 cycles on the test windows. PyTorch timings are less repeatable than ONNX ones. A separate check that timed untrained models of the same sizes in fresh processes gave about 1.3 ms for the LSTM and 0.29 ms for the CNN, so the speed-up may be larger than the table shows.
+- Quantisation costs little accuracy. Test RMSE changes by at most 0.09 cycles and the NASA score by at most 17, and the largest single prediction moves by 2.5 cycles (LSTM, dynamic). The direction is not consistent (dynamic INT8 lowers the LSTM's RMSE by 0.02 and raises the CNN's by 0.09). This is one trained model per architecture scored on 100 test engines, so changes this small are not distinguishable from noise.
+- The 1D-CNN gains the most from static INT8: median latency halves (0.034 to 0.018 ms) and the file shrinks to 150 KB from 561 KB, for an RMSE increase of 0.08. Dynamic INT8 gives the same file size (149 KB) but almost no speed-up (0.031 ms), for an RMSE increase of 0.09.
+- For the LSTM only dynamic quantisation helps. It cuts the file to 67 KB from 224 KB (30 percent of the original) and median latency from 0.094 to 0.066 ms. Static quantisation leaves both LSTM operators in float, which an inspection of the graph confirms, and only the two linear layers at the end carry quantise and dequantise nodes. Its size and speed are unchanged.
+- Memory does not improve. Every ONNX variant adds about 11.5 MB, whatever the precision. The weights are well under 1 MB, so the cost is set by the runtime's session and working buffers and not by the weights. On a device with little memory, the runtime is the thing to shrink.
+- The ONNX fp32 median latencies matched across two complete runs of the benchmark that included retraining (0.095 and 0.094 ms for the LSTM, 0.034 and 0.034 ms for the CNN). An earlier version of this benchmark left convolutions out of dynamic quantisation on the mistaken belief that the CPU kernel could not run them. They run fine, and the table above includes them.
+- These timings are for 1 thread and batch size 1 on this chip, and will not carry over unchanged to a Raspberry Pi.
+
 ## Notes
 
 The test sets hold one score per engine (100, 259, 100 and 248 engines), so differences of one or two RMSE points between models are within the noise of a single seed. The comparison with a global normalisation uses the same seed and the same engine split.

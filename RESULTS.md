@@ -62,6 +62,64 @@ The Val RMSE of the networks is the best of up to 40 epoch scores on the validat
 
 On FD001 neither network beats gradient boosting on hand-crafted features: test RMSE is 16.10 for the LSTM and 16.14 for the CNN against 14.53. They are about level with linear regression. On FD002 the LSTM is slightly ahead of gradient boosting on test RMSE (26.68 against 26.93, a gap smaller than its seed spread) and behind it on the NASA score (8854 against 8287). The 1D-CNN is behind gradient boosting on FD002 on both measures (27.40 and 10218). Validation RMSE is not used for this comparison because the two kinds of model are not scored the same way. The networks use plain defaults with no hyperparameter search, so these numbers are a starting point and not a ceiling. Gradient boosting and linear regression are single runs, so the comparison cannot say whether the 0.25 RMSE gap on FD002 is real.
 
+## M3: anomaly detection
+
+Produced by `scripts/run_anomaly.py` (`make anomaly`), one seed. Both detectors are fitted on healthy training windows only, meaning windows whose capped RUL still equals the cap. The alarm threshold is the 95th percentile of scores on healthy windows from the validation engines, so about 5 percent of healthy windows should raise an alarm. Everything is scored on the official test engines. C-MAPSS has no fault labels, so there are two checks.
+
+Injected faults: a copy of every healthy test window gets one fault in one random sensor, and the faulted copies are the positives. The healthy originals are the negatives, so each row is balanced. The sizes are in standard deviations of the normalised sensor: a spike of 5 over the last 3 cycles, a drift that ramps up to 4 across the window, and a sensor stuck at its first reading.
+
+End of life: windows within 30 cycles of failure are the positives and healthy windows are the negatives, so there are many more negatives than positives.
+
+| Subset | Detector | Check | Precision | Recall | F1 | AUC | False alarm rate | Healthy | Anomalous |
+|---|---|---|---|---|---|---|---|---|---|
+| FD001 | Isolation forest | spike | 0.68 | 0.08 | 0.15 | 0.721 | 0.040 | 8041 | 8041 |
+| FD001 | Isolation forest | drift | 0.72 | 0.10 | 0.18 | 0.758 | 0.040 | 8041 | 8041 |
+| FD001 | Isolation forest | stuck | 0.54 | 0.05 | 0.09 | 0.597 | 0.040 | 8041 | 8041 |
+| FD001 | Isolation forest | end of life | 0.50 | 0.99 | 0.67 | 0.997 | 0.040 | 8041 | 332 |
+| FD001 | Autoencoder | spike | 0.84 | 0.15 | 0.26 | 0.829 | 0.029 | 8041 | 8041 |
+| FD001 | Autoencoder | drift | 0.93 | 0.37 | 0.53 | 0.922 | 0.029 | 8041 | 8041 |
+| FD001 | Autoencoder | stuck | 0.49 | 0.03 | 0.05 | 0.467 | 0.029 | 8041 | 8041 |
+| FD001 | Autoencoder | end of life | 0.25 | 0.23 | 0.24 | 0.810 | 0.029 | 8041 | 332 |
+| FD002 | Isolation forest | spike | 0.70 | 0.11 | 0.20 | 0.718 | 0.050 | 20702 | 20702 |
+| FD002 | Isolation forest | drift | 0.72 | 0.13 | 0.22 | 0.748 | 0.050 | 20702 | 20702 |
+| FD002 | Isolation forest | stuck | 0.54 | 0.06 | 0.11 | 0.579 | 0.050 | 20702 | 20702 |
+| FD002 | Isolation forest | end of life | 0.49 | 0.93 | 0.64 | 0.985 | 0.050 | 20702 | 1087 |
+| FD002 | Autoencoder | spike | 0.85 | 0.12 | 0.21 | 0.810 | 0.022 | 20702 | 20702 |
+| FD002 | Autoencoder | drift | 0.94 | 0.36 | 0.52 | 0.886 | 0.022 | 20702 | 20702 |
+| FD002 | Autoencoder | stuck | 0.42 | 0.02 | 0.03 | 0.453 | 0.022 | 20702 | 20702 |
+| FD002 | Autoencoder | end of life | 0.49 | 0.40 | 0.44 | 0.915 | 0.022 | 20702 | 1087 |
+
+Findings:
+
+- Both detectors keep false alarms near the 5 percent target (2 to 5 percent on healthy test windows), but they miss most injected faults. Recall is 2 to 15 percent for spikes and stuck sensors, and the best recall on any injected fault is 37 percent (the autoencoder on drift).
+- The autoencoder is the better detector of injected spikes and drifts (AUC 0.81 to 0.92 against 0.72 to 0.76). Its alarms are precise when they fire (precision 0.84 to 0.94) but rare.
+- A stuck sensor is not detected by either method. The autoencoder's AUC is below 0.5, so frozen windows score as more normal than healthy ones, which is likely because a constant sensor is easy to reconstruct.
+- For windows close to failure the isolation forest is far better than the autoencoder: AUC 0.997 against 0.810 on FD001, with recall of 0.99 at a precision of 0.50. The isolation forest sees the mean, slope and last value of each sensor, and these shift as an engine wears. The autoencoder has to reconstruct the whole window.
+- Injected faults are synthetic and the sizes were chosen by hand, so the recall figures describe these faults and not real sensor failures. The injected check and the end of life check measure different things, and neither detector is best on both.
+
+## M3: uncertainty with a Gaussian process
+
+Produced by `scripts/run_uncertainty.py` (`make uncertainty`) on FD001. A health indicator is built from the first principal component of the normalised sensors, oriented to rise with wear, smoothed with a 5 cycle trailing mean. The component and the failure level (the mean indicator value at the last cycle of the training engines) come from training engines only. For each test engine a Gaussian process (squared dot product kernel for the trend, an RBF kernel and white noise) is fitted to its observed indicator values and extrapolated for up to 250 cycles. The predicted RUL is the first cycle at which the mean reaches the failure level, and the interval is where the mean plus or minus 2 standard deviations reaches it. If a curve never reaches the level, that RUL or bound is reported as 250. The "No crossing in horizon" column is the share of engines whose upper bound is 250, meaning the lower edge of the band never reaches the failure level.
+
+| Engines | RMSE | NASA score | Interval coverage | Mean interval width | No crossing in horizon |
+|---|---|---|---|---|---|
+| 100 | 107.73 | 1004006872 | 0.10 | 57.6 | 0.63 |
+
+This is much worse than the M1 and M2 models (FD001 test RMSE 14.5 to 16.6). The breakdown by true RUL of the test engine shows why. It uses the official labels, so it is an analysis and not something a deployed system could know in advance.
+
+| True RUL | Engines | RMSE | Interval coverage | Mean interval width | No crossing in horizon |
+|---|---|---|---|---|---|
+| 0 to 30 | 25 | 25.93 | 0.32 | 33.7 | 0.00 |
+| 31 to 60 | 14 | 99.71 | 0.00 | 105.4 | 0.36 |
+| 61 to 125 | 50 | 130.99 | 0.04 | 62.6 | 0.94 |
+| over 125 | 11 | 115.41 | 0.00 | 28.2 | 1.00 |
+
+- The forecast only works once degradation is visible. For engines within 30 cycles of failure the RMSE is 25.9, and the upper bound of the interval stays inside the horizon for every engine. For engines that are earlier in life the RMSE is 100 to 131 and the upper bound often runs off the horizon (94 to 100 percent of engines with a true RUL above 60). The indicator is still close to flat for these engines, so a trend fitted to it does not point at the failure level.
+- The intervals are too narrow even where the forecast works. The nominal level is about 95 percent, and coverage is 0.32 for engines within 30 cycles of failure. The band reflects the uncertainty in the fitted trend and the noise, but not the error in the choice of a quadratic trend or in the failure level, which is an average over training engines.
+- The NASA score of about 1e9 is most likely driven by engines whose forecast is far above the true RUL, because late predictions are penalised exponentially. It is reported for completeness and is not a useful comparison with the M1 and M2 scores.
+
+The plot in the README shows four fixed test engines (24, 34, 76 and 82), picked before any results were seen. They turned out to be close to failure, so the plot shows the forecast at its best.
+
 ## Notes
 
 The test sets hold one score per engine (100, 259, 100 and 248 engines), so differences of one or two RMSE points between models are within the noise of a single seed. The comparison with a global normalisation uses the same seed and the same engine split.

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from sensor_edge.baselines import make_baselines
 from sensor_edge.data import OPERATING_CONDITIONS, Subset, load_subset, split_units
@@ -48,7 +49,21 @@ class PreparedData:
     test_units: np.ndarray
 
 
-def prepare_data(subset: Subset, config: ExperimentConfig) -> PreparedData:
+@dataclass(frozen=True)
+class NormalisedFrames:
+    """Train, validation and test tables after normalisation, plus the sensors kept.
+
+    Train and validation tables carry a capped `rul` column. The test table does not.
+    """
+
+    train: pd.DataFrame
+    val: pd.DataFrame
+    test: pd.DataFrame
+    sensors: list[str]
+
+
+def normalise_subset(subset: Subset, config: ExperimentConfig) -> NormalisedFrames:
+    """Split by engine unit and normalise using training engines only."""
     train_units, val_units = split_units(
         subset.train["unit"].to_numpy(), config.val_fraction, config.seed
     )
@@ -59,8 +74,18 @@ def prepare_data(subset: Subset, config: ExperimentConfig) -> PreparedData:
     normaliser = OperatingConditionNormaliser(n_conditions, config.seed).fit(train)
     train, val, test = (normaliser.transform(part) for part in (train, val, subset.test))
     sensors = select_informative_sensors(train)
+    return NormalisedFrames(
+        train=add_capped_rul(train, config.rul_cap),
+        val=add_capped_rul(val, config.rul_cap),
+        test=test,
+        sensors=sensors,
+    )
 
-    train, val = add_capped_rul(train, config.rul_cap), add_capped_rul(val, config.rul_cap)
+
+def prepare_data(subset: Subset, config: ExperimentConfig) -> PreparedData:
+    frames = normalise_subset(subset, config)
+    train, val, test, sensors = frames.train, frames.val, frames.test, frames.sensors
+
     train_windows, train_rul, train_window_units = make_training_windows(
         train, sensors, config.window_length
     )

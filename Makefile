@@ -23,7 +23,9 @@ uncertainty:
 
 stream-up:
 	docker compose -f docker/compose.yml up -d
-	docker compose -f docker/compose.yml exec redpanda rpk topic create sensor-readings sensor-alerts -p 1 -r 1
+	# Wait for the broker to accept requests, then create the topics (they may already exist).
+	for i in $$(seq 1 30); do docker compose -f docker/compose.yml exec -T redpanda rpk cluster info >/dev/null 2>&1 && break; sleep 2; done
+	docker compose -f docker/compose.yml exec -T redpanda rpk topic create sensor-readings sensor-alerts -p 1 -r 1 || echo "topics may already exist"
 
 stream-models:
 	PYTHONPATH=src $(PYTHON) scripts/prepare_stream_models.py --data-dir $(DATA_DIR) --out-dir artifacts/stream

@@ -157,7 +157,7 @@ Produced by `scripts/stream_demo.sh` (`make stream-demo`) on the FD001 test engi
 
 ![Grafana dashboard for the streaming demo](docs/grafana_dashboard.png)
 
-The screenshot is the third run, taken over a window that covers only that run (about 2.5 minutes). The panels show the scoring rate, the running count of alerts, end-to-end latency percentiles, the anomaly scores of the five highest engines against the alarm threshold, alerts per second, the ten engines predicted closest to failure, and the anomaly score and predicted RUL of a selected engine (engine 41 here).
+The screenshot is the third run, taken over a window that covers only that run (about 2.5 minutes). The panels show the scoring rate, the running count of alerts, end-to-end latency percentiles, the anomaly score of the highest and the median engine against the alarm threshold, alerts per second, the ten engines predicted closest to failure, and the anomaly score and predicted RUL of a selected engine (engine 41 here).
 
 ### End-to-end latency
 
@@ -169,26 +169,27 @@ End-to-end latency is the time from the producer's clock reading just before it 
 | 2, dashboard loaded for the first time during the run | 13096 | 100.1 | 5.55 | 24.24 | 707.64 | 778.8 | 4.46 | 7.16 | 15.17 |
 | 3, dashboard open | 13096 | 100.0 | 5.54 | 8.03 | 17.03 | 68.9 | 4.47 | 6.06 | 8.71 |
 
-- Every run kept up with the producer: all 13,096 readings were scored at 100 per second with no backlog.
+- Every run scored all 13,096 readings at the producer's pace of 100 per second on average. Run 2 had a temporary queue: a p99 of 708 ms means at least 131 readings waited more than 0.7 seconds.
 - The median end-to-end latency was 5.3 to 5.6 ms in all three runs. About 4.3 to 4.5 ms of that is scoring, so the Kafka send and receive path adds about 1 ms.
 - The tail varied between runs. Run 2 had a p99 of 708 ms, against 13 and 17 ms in the other two runs. During run 2 I loaded the dashboard for the first time and polled Prometheus, and I did not isolate the cause. The Grafana latency panel recorded the same spike, so the dashboard is showing real delays.
 - Scoring one reading costs about 4 ms in a single process, which was measured separately on 1,000 readings without Kafka at 3.95 ms. That puts the ceiling near 250 readings per second for one consumer, and the replay at 100 per second uses a little under half of it. Throughput at higher rates was not measured through Kafka.
 
 ### Alerts
 
-The replay raised 1,125 alerts over 13,096 readings (8.6 percent). The count was the same in the first and third runs. Using the official RUL file to work out how many cycles each reading was from failure, from the alerts topic of the first run:
+The replay raised 1,125 alerts over 13,096 readings (8.6 percent). The count was the same in the first and third runs. The table splits the readings by how far the engine really was from failure, using the official RUL file, and by whether the window was padded. A window is padded for the first 29 cycles of an engine, when fewer than 30 readings exist and the first reading is repeated to fill it. The counts come from the alerts topic of the first run.
 
-| True RUL at the reading | Readings | Alerts | Alert rate |
-|---|---|---|---|
-| 30 or less | 332 | 326 | 0.982 |
-| 31 to 125 | 4,812 | 475 | 0.099 |
-| over 125 | 7,952 | 324 | 0.041 |
+| True RUL at the reading | Window | Readings | Alerts | Alert rate |
+|---|---|---|---|---|
+| 30 or less | full | 332 | 326 | 0.982 |
+| 31 to 125 | full | 4,732 | 475 | 0.100 |
+| 31 to 125 | padded | 80 | 0 | 0.000 |
+| over 125 | full | 5,132 | 1 | 0.0002 |
+| over 125 | padded | 2,820 | 323 | 0.115 |
 
-The alerts follow wear. Almost every reading within 30 cycles of failure raises one, and the rate on healthy readings (4.1 percent) is close to the 5 percent the threshold was set for. This matches the M3 result that this detector is strong near failure.
+- The alerts that mean something follow wear. Almost every reading within 30 cycles of failure raises one (98 percent), and one reading in ten raises one in the 31 to 125 range, starting around cycle 70. On full windows of healthy readings the rate is 1 in 5,132, far below the 5 percent the threshold was set for.
+- Padded windows are the main source of false alarms. 323 of the 324 alerts on healthy readings (and 29 percent of all alerts) are in the first 29 cycles of an engine, and 93 of the 100 engines alert on their very first reading. A window made of one repeated reading looks unusual to the forest. The 4 percent alert rate over all healthy readings (padded and full windows together) is therefore mostly this start-up effect and not a sign that the threshold is calibrated. The threshold was set on validation windows that include padded ones (561 of 1,769), which probably explains why it is loose for full windows, but that was not tested. Holding back alerts until an engine has a full window of readings would remove these false alarms, and that was not done here.
 
-The alerts do not follow injected spikes. In the first run a spike of 8 standard deviations was planted in sensor 11 of engine 7 for cycles 100 to 105, and no alert was raised for engine 7 in cycles 100 to 114, the windows that contain it. A separate check scored engine 7 with spikes of 0, 8, 20, 50 and 100 standard deviations. The forest's anomaly score stayed at or below 0.434 in every case, under the threshold of 0.508. The spike does reach the scored window: for the 100 standard deviation case the sensor's normalised value in the window changes by about 42 units and no other column changes. A shift of 1000 units in one sensor's features gives the same forest score as 20 units (0.421), so the score saturates. This agrees with M3, where the isolation forest had low recall on injected spikes, and it means the streaming alerts cannot be relied on for sudden single-sensor faults. A detector with better recall on those, such as the autoencoder from M3, would need to be added to the consumer.
-
-The first alerts in the topic are cycle 1 readings of the first engines. A cycle 1 window is one reading repeated, which looks unusual to the forest. How many of the healthy-region alerts come from such padded windows was not measured.
+The alerts do not follow injected spikes. In the first run a spike of 8 standard deviations of the fleet's sensor 11 values was planted in engine 7 for cycles 100 to 105. No alert was raised for engine 7 anywhere in cycles 100 to 134, which are all the windows that contain the spike (its only alerts are at cycles 1 and 2). A separate check scored engine 7 with spikes of 0, 8, 20, 50 and 100 standard deviations, using the same scale as the run. The highest anomaly score in cycles 100 to 134 was 0.441 with no spike, 0.453 with the 8 standard deviation spike and 0.457 for the larger ones, all under the threshold of 0.508. The spike does reach the scored window: the normalised value of that sensor changes by up to 5.9 units for the 8 standard deviation spike and 73.9 for the 100 standard deviation spike, and no other column changes. Shifting the last three rows of one sensor by 20, 100 and 1000 normalised units gives the same forest score (0.421), so the score saturates. This agrees with M3, where the isolation forest had low recall on injected spikes, and it means these alerts cannot be relied on for sudden single-sensor faults. A detector with better recall on those, such as the autoencoder from M3, would need to be added to the consumer.
 
 ## Notes
 

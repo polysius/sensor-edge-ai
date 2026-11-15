@@ -60,18 +60,18 @@ The FD001 test engines are replayed into a Redpanda topic at 100 readings per se
 
 ![Grafana dashboard for the streaming demo](docs/grafana_dashboard.png)
 
-End-to-end latency from the producer sending a reading to the consumer finishing its score had a median of 5.3 to 5.6 ms over three runs of the full replay, with a p99 of 13, 17 and 708 ms. The consumer kept up in every run. The alerts follow engine wear (98 percent of readings within 30 cycles of failure raise one) and do not catch a spike planted in a single sensor, which matches the weak spike recall of this detector in M3. [RESULTS.md](RESULTS.md) has the latency table for all three runs and the alert breakdown.
+End-to-end latency from the producer sending a reading to the consumer finishing its score had a median of 5.3 to 5.6 ms over three runs of the full replay, with a p99 of 13, 708 and 17 ms. Every run scored all readings at the producer's pace on average, but the run with the 708 ms tail had a temporary queue. The alerts follow engine wear (98 percent of readings within 30 cycles of failure raise one) and do not catch a spike planted in a single sensor, which matches the weak spike recall of this detector in M3. Most false alarms come from the first 29 cycles of each engine, when the window is padded, and they are not suppressed. [RESULTS.md](RESULTS.md) has the latency table for all three runs and the alert breakdown.
 
 To run it, start the stack, train the models, and run the demo. Grafana is at http://localhost:3300 and opens on the dashboard without a login. The host ports (3300, 9190, 19092) are chosen to avoid common local ports.
 
 ```
 make stream-up       # Redpanda, Prometheus and Grafana, plus the two topics
-make stream-models   # trains the CNN, the forest and the alarm threshold (needs torch)
+make stream-models   # trains the CNN, the forest and the alarm threshold (needs torch and the ONNX tools: pip install -e .[deep,edge])
 make stream-demo     # replays the engines and scores them live
 make stream-down
 ```
 
-The consumer and producer need `pip install -e .[stream]`. The consumer exposes metrics on port 8000, which Prometheus reaches as `host.docker.internal`. The demo runs one consumer on one partition, and the replay is recorded data and not live sensors.
+The consumer and producer need `pip install -e .[stream]`; training the models also needs `.[deep,edge]`. The consumer exposes metrics on port 8000, which Prometheus reaches as `host.docker.internal`. The demo runs one consumer on one partition, and the replay is recorded data and not live sensors.
 
 ## Results
 

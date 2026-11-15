@@ -61,8 +61,9 @@ def run_consumer(
 
     Starts from the newest offset, so start this before the producer. Prints READY
     once Kafka has assigned the topic, which is when it is safe to start the producer.
+    Stops with an error if no message arrives within `idle_seconds` of starting.
     """
-    from confluent_kafka import Consumer, Producer
+    from confluent_kafka import OFFSET_END, Consumer, Producer
     from prometheus_client import start_http_server
 
     bundle = load_bundle(bundle_dir)
@@ -80,18 +81,25 @@ def run_consumer(
         }
     )
     alert_producer = Producer({"bootstrap.servers": brokers})
-    consumer.subscribe([topic])
+    def start_at_newest_offset(assigned_consumer, partitions):
+        """Begin at the end of the log once the topic is assigned, then say we are ready.
+
+        Setting the offset here means no reading sent after READY can be skipped.
+        """
+        for partition in partitions:
+            partition.offset = OFFSET_END
+        assigned_consumer.assign(partitions)
+        print("READY", flush=True)
+
+    consumer.subscribe([topic], on_assign=start_at_newest_offset)
 
     end_to_end, scoring = [], []
-    ready_announced = False
     first_message_at = last_message_at = None
+    last_activity = time.time()  # the start, until the first message arrives
     while max_messages is None or len(end_to_end) < max_messages:
         message = consumer.poll(0.5)
-        if not ready_announced and consumer.assignment():
-            print("READY", flush=True)
-            ready_announced = True
         if message is None or message.error():
-            if last_message_at and time.time() - last_message_at > idle_seconds:
+            if time.time() - last_activity > idle_seconds:
                 break
             continue
 
@@ -103,7 +111,7 @@ def run_consumer(
         end_to_end.append(finished_at - reading["sent_ts"])
         scoring.append(finished_at - received_at)
         first_message_at = first_message_at or received_at
-        last_message_at = finished_at
+        last_message_at = last_activity = finished_at
 
         unit = str(result.unit)
         metrics["scored"].inc()

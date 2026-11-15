@@ -5,7 +5,7 @@
     "sensor-edge-ai"
   ],
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "refresh": "5s",
   "time": {
     "from": "now-5m",
@@ -78,7 +78,7 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Alerts raised (total)",
+      "title": "Alerts raised (total, peak in view)",
       "gridPos": {
         "h": 5,
         "w": 6,
@@ -120,7 +120,14 @@
         "overrides": []
       },
       "options": {
-        "colorMode": "background"
+        "colorMode": "background",
+        "reduceOptions": {
+          "calcs": [
+            "max"
+          ],
+          "fields": "",
+          "values": false
+        }
       }
     },
     {
@@ -168,7 +175,7 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "Anomaly score of the five highest engines, with the alarm threshold",
+      "title": "Anomaly score: highest and median engine, with the alarm threshold",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -182,11 +189,16 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "topk(5, engine_anomaly_score)",
-          "legendFormat": "engine {{unit}}"
+          "expr": "max(engine_anomaly_score)",
+          "legendFormat": "highest engine"
         },
         {
           "refId": "B",
+          "expr": "quantile(0.5, engine_anomaly_score)",
+          "legendFormat": "median engine"
+        },
+        {
+          "refId": "C",
           "expr": "anomaly_alarm_threshold",
           "legendFormat": "alarm threshold"
         }

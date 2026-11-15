@@ -22,6 +22,8 @@ LOG=$(mktemp)
 $PYTHON scripts/run_consumer.py --bundle-dir "$BUNDLE_DIR" --summary "$SUMMARY" \
     --idle-seconds 20 >"$LOG" 2>&1 &
 CONSUMER_PID=$!
+# Never leave the consumer behind, because it would keep its metrics port busy.
+trap 'kill "$CONSUMER_PID" 2>/dev/null || true' EXIT
 
 until grep -q READY "$LOG"; do
     if ! kill -0 "$CONSUMER_PID" 2>/dev/null; then cat "$LOG"; exit 1; fi
@@ -34,5 +36,7 @@ if [ -n "$FAULT" ]; then
     FAULT_ARGS=(--fault "${FAULT_WORDS[@]}")
 fi
 $PYTHON scripts/run_producer.py --data-dir "$DATA_DIR" --rate "$RATE" "${FAULT_ARGS[@]}"
-wait "$CONSUMER_PID"
-cat "$LOG"
+consumer_status=0
+wait "$CONSUMER_PID" || consumer_status=$?
+cat "$LOG"  # shows the latency summary, or the error if the consumer failed
+exit "$consumer_status"

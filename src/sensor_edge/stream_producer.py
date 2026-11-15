@@ -10,6 +10,7 @@ import pandas as pd
 from sensor_edge.data import COLUMN_NAMES
 
 DEFAULT_TOPIC = "sensor-readings"
+FLUSH_TIMEOUT_S = 30.0
 
 
 @dataclass(frozen=True)
@@ -61,21 +62,36 @@ def run_producer(
     """Send readings to `topic` at `rate` per second (0 means as fast as possible).
 
     Each message carries `sent_ts`, the wall clock time just before it was sent, so
-    the consumer can measure the end to end delay. Returns the number sent.
+    the consumer can measure the end to end delay. Returns the number of readings the
+    broker confirmed, and raises if any were not delivered.
     """
     from confluent_kafka import Producer
 
     producer = Producer({"bootstrap.servers": brokers, "linger.ms": 0})
+    delivered, failures = 0, []
+
+    def on_delivery(error, message):
+        nonlocal delivered
+        if error is None:
+            delivered += 1
+        else:
+            failures.append(str(error))
+
     start = time.time()
-    sent = 0
-    for reading in readings_from_frame(frame, faults):
-        if max_messages is not None and sent >= max_messages:
+    for queued, reading in enumerate(readings_from_frame(frame, faults)):
+        if max_messages is not None and queued >= max_messages:
             break
         if rate > 0:
-            time.sleep(max(0.0, due_time(start, sent, rate) - time.time()))
+            time.sleep(max(0.0, due_time(start, queued, rate) - time.time()))
         reading["sent_ts"] = time.time()
-        producer.produce(topic, key=str(reading["unit"]), value=json.dumps(reading))
+        producer.produce(
+            topic, key=str(reading["unit"]), value=json.dumps(reading), on_delivery=on_delivery
+        )
         producer.poll(0)
-        sent += 1
-    producer.flush()
-    return sent
+    still_queued = producer.flush(FLUSH_TIMEOUT_S)
+    if still_queued or failures:
+        raise RuntimeError(
+            f"{still_queued} readings were never delivered and {len(failures)} failed "
+            f"(first error: {failures[0] if failures else 'none'})"
+        )
+    return delivered

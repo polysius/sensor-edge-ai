@@ -16,4 +16,4 @@ baselines:
 	PYTHONPATH=src $(PYTHON) scripts/run_baselines.py --data-dir $(DATA_DIR) --output artifacts/baselines.md
 
 deep:
-	PYTHONPATH=src $(PYTHON) scripts/run_deep.py --data-dir $(DATA_DIR) --output artifacts/deep_models.md
+	PYTHONPATH=src $(PYTHON) scripts/run_deep.py --data-dir $(DATA_DIR) --subsets FD001 FD002 --output artifacts/deep_models.md

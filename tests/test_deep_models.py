@@ -81,6 +81,24 @@ def test_early_stopping_restores_the_best_epoch():
     assert restored_rmse == pytest.approx(result.val_rmse)
 
 
+def test_run_deep_models_reports_mean_and_spread_over_seeds(tmp_path):
+    from sensor_edge.deep_experiment import run_deep_models
+    from sensor_edge.experiment import ExperimentConfig
+    from synthetic import write_subset
+
+    write_subset(tmp_path, "FD001")
+
+    rows = run_deep_models(
+        tmp_path, "FD001", ExperimentConfig(window_length=10, rul_cap=30), seeds=[0, 1],
+        train_config=TrainConfig(epochs=2, batch_size=64),
+    )
+
+    assert [row["model"] for row in rows] == ["LSTM", "1D-CNN"]
+    for row in rows:
+        assert row["n_seeds"] == 2
+        assert np.isfinite([row["test_rmse"], row["test_rmse_std"], row["val_rmse"]]).all()
+
+
 def test_predictions_are_in_cycles_and_never_negative():
     model = CNN1DRegressor(N_SENSORS, WINDOW)
     windows, _ = make_learnable_windows(20, seed=0)

@@ -31,7 +31,7 @@ An LSTM (two layers, 64 hidden units) and a 1D-CNN (three convolutions over the 
 
 ## Results
 
-FD001 test RMSE is 16.61 for linear regression, 14.53 for gradient boosting, 16.10 for the LSTM and 16.14 for the 1D-CNN. The networks do not beat gradient boosting on FD001 and are about level with it on FD002. The full tables, including the effect of per-condition normalisation on FD002, are in [RESULTS.md](RESULTS.md).
+FD001 test RMSE is 16.61 for linear regression, 14.53 for gradient boosting, 16.10 for the LSTM and 16.14 for the 1D-CNN. The networks do not beat gradient boosting on FD001. On FD002 the LSTM matches it on test RMSE and the 1D-CNN is behind it. The full tables, including the effect of per-condition normalisation on FD002, are in [RESULTS.md](RESULTS.md).
 
 ## Run it
 
@@ -52,4 +52,4 @@ make deep        # needs torch: pip install -e .[deep]; writes artifacts/deep_mo
 
 ## Limitations
 
-Results use one seed and one engine split, so small differences between models are not significant. The validation RMSE is measured over every cycle of the held-out engines, while the test RMSE uses only the last cycle of each test engine, so the two are not directly comparable. The training target is capped at 125 cycles but the official test RUL is not, which sets a floor on test RMSE (3.74 for FD001, 18.32 for FD002). RESULTS.md has the full floor table.
+Results use one engine split. The baselines are a single run and the networks use three seeds, so small differences between models are not significant. The validation RMSE is measured over every cycle of the held-out engines, while the test RMSE uses only the last cycle of each test engine, so the two are not directly comparable. The training target is capped at 125 cycles but the official test RUL is not, which sets a floor on test RMSE (3.74 for FD001, 18.32 for FD002). RESULTS.md has the full floor table.

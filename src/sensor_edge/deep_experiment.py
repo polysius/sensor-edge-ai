@@ -60,7 +60,8 @@ def run_deep_models(
     """Train each network once per seed and report the mean and spread across seeds.
 
     The engine split stays fixed (experiment.seed) so the seeds measure training
-    randomness only: weight initialisation and batch order.
+    randomness only: weight initialisation, batch order and dropout. The reported
+    deviation is the population standard deviation across seeds.
     """
     train_config = train_config or TrainConfig()
     data = prepare_data(load_subset(data_dir, subset_name), experiment)

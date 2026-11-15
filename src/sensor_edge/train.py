@@ -76,6 +76,10 @@ def train_model(
             optimiser.step()
 
         val_rmse = rmse(val_rul, predict_rul(model, val_windows, rul_cap))
+        if not np.isfinite(val_rmse):
+            # NaN never compares as an improvement, so without this the run would
+            # quietly return the untrained weights.
+            raise RuntimeError(f"Training diverged at epoch {epoch}; try a lower learning rate")
         if val_rmse < best_rmse:
             best_rmse, best_epoch = val_rmse, epoch
             best_weights = copy.deepcopy(model.state_dict())
